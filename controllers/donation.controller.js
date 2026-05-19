@@ -60,7 +60,9 @@ export const listCampaigns = async (req, res, next) => {
 
 export const getCampaign = async (req, res, next) => {
   try {
-    const campaign = await donModel.findCampaignById(parseInt(req.params.id, 10));
+    const campaignId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(campaignId)) return next(new AppError('Invalid campaign id.', 400));
+    const campaign = await donModel.findCampaignById(campaignId);
     if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
 
     const stats = await donModel.getCampaignStats(campaign.id);
@@ -78,6 +80,7 @@ export const getCampaign = async (req, res, next) => {
 export const updateCampaign = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return next(new AppError('Invalid campaign id.', 400));
     const campaign = await donModel.findCampaignById(id);
     if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
 
@@ -95,6 +98,7 @@ export const updateCampaign = async (req, res, next) => {
 export const deleteCampaign = async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return next(new AppError('Invalid campaign id.', 400));
     const campaign = await donModel.findCampaignById(id);
     if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
 
@@ -109,23 +113,11 @@ export const deleteCampaign = async (req, res, next) => {
 
 export const donate = async (req, res, next) => {
   try {
-    const campaignId = parseInt(req.params.id, 10);
     const {
       amount, currency = 'INR', payment_method = 'other',
       is_anonymous = false, donor_message = null,
       donor_name, donor_email, donor_phone, donor_pan, donor_address,
     } = req.body;
-
-    const campaign = await donModel.findCampaignById(campaignId);
-    if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
-
-    if (campaign.status !== 'active') {
-      return next(new AppError('Donations are only accepted for active campaigns.', 400, 'CAMPAIGN_NOT_ACTIVE'));
-    }
-
-    if (campaign.end_date && new Date(campaign.end_date) < new Date()) {
-      return next(new AppError('This campaign has expired.', 400, 'CAMPAIGN_EXPIRED'));
-    }
 
     const parsedAmount = parseFloat(amount);
     const transaction_ref = `TXN-${uuid().split('-')[0].toUpperCase()}-${Date.now()}`;
@@ -139,15 +131,13 @@ export const donate = async (req, res, next) => {
       currency,
       receipt: transaction_ref,
       notes: {
-        campaign_id: String(campaignId),
+        purpose: 'general_donation',
         donor_email: donor_email || '',
       },
     });
 
     const { id } = await donModel.createTransaction({
-      donation_id: campaignId,
-      donor_patient_id: null,
-      donor_user_id: null,
+      donation_id: null,
       amount: parsedAmount,
       currency,
       payment_method,
@@ -173,7 +163,7 @@ export const donate = async (req, res, next) => {
         razorpay_order_id: order.id,
         amount: order.amount,
         currency: order.currency,
-        campaign_title: campaign.title,
+        purpose: 'General Donation',
       },
     });
   } catch (err) { next(err); }
@@ -246,6 +236,7 @@ export const handleDonationWebhook = async (req, res, next) => {
 export const getCampaignTransactions = async (req, res, next) => {
   try {
     const campaignId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(campaignId)) return next(new AppError('Invalid campaign id.', 400));
     const { limit, offset, page } = req.pagination;
 
     const campaign = await donModel.findCampaignById(campaignId);

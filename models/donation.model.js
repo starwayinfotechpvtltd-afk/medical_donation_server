@@ -72,21 +72,19 @@ export const deleteCampaign = async (id) => {
 };
 
 export const createTransaction = async ({
-  donation_id, donor_patient_id = null, donor_user_id = null, amount, currency = 'INR',
+  donation_id, amount, currency = 'INR',
   payment_method, transaction_ref = null,
   razorpay_order_id = null, donor_name = null, donor_email = null, donor_phone = null, donor_pan = null, donor_address = null,
   is_anonymous = 0, donor_message = null,
 }) => {
   const [result] = await pool.query(
     `INSERT INTO transactions
-      (donation_id, donor_patient_id, donor_user_id, amount, currency, payment_method, payment_status,
+      (donation_id, amount, currency, payment_method, payment_status,
        transaction_ref, razorpay_order_id, donor_name, donor_email, donor_phone, donor_pan, donor_address,
        is_anonymous, donor_message, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+     VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
     [
       donation_id,
-      donor_patient_id,
-      donor_user_id,
       amount,
       currency,
       payment_method,
@@ -106,9 +104,9 @@ export const createTransaction = async ({
 
 export const findTransactionById = async (id) => {
   const [rows] = await pool.query(
-    `SELECT t.*, d.title AS campaign_title
+    `SELECT t.*, COALESCE(d.title, 'General Donation') AS purpose
      FROM transactions t
-     JOIN donations d ON d.id = t.donation_id
+     LEFT JOIN donations d ON d.id = t.donation_id
      WHERE t.id = ? LIMIT 1`,
     [id]
   );
@@ -117,9 +115,9 @@ export const findTransactionById = async (id) => {
 
 export const findTransactionByRazorpayOrderId = async (razorpayOrderId) => {
   const [rows] = await pool.query(
-    `SELECT t.*, d.title AS campaign_title
+    `SELECT t.*, COALESCE(d.title, 'General Donation') AS purpose
      FROM transactions t
-     JOIN donations d ON d.id = t.donation_id
+     LEFT JOIN donations d ON d.id = t.donation_id
      WHERE t.razorpay_order_id = ?
      LIMIT 1`,
     [razorpayOrderId]
@@ -220,9 +218,9 @@ export const getCampaignStats = async (donationId) => {
 export const getOverallStats = async () => {
   const [rows] = await pool.query(
     `SELECT
-       (SELECT COUNT(*) FROM donations) AS total_campaigns,
-       (SELECT COUNT(*) FROM donations WHERE status='active') AS active_campaigns,
-       (SELECT COALESCE(SUM(raised_amount),0) FROM donations) AS total_raised,
+       0 AS total_campaigns,
+       0 AS active_campaigns,
+       (SELECT COALESCE(SUM(amount),0) FROM transactions WHERE payment_status='completed') AS total_raised,
        (SELECT COUNT(*) FROM transactions WHERE payment_status='completed') AS total_transactions,
        (SELECT COUNT(*) FROM transactions
         WHERE DATE(created_at) = CURDATE()
@@ -241,9 +239,9 @@ export const getRecentCompletedDonations = async (limit = 20) => {
     `SELECT
       t.id, t.amount, t.currency, t.created_at, t.is_anonymous,
       t.donor_name, t.donor_email, t.donor_phone, t.transaction_ref,
-      d.title AS campaign_title
+      COALESCE(d.title, 'General Donation') AS purpose
      FROM transactions t
-     JOIN donations d ON d.id = t.donation_id
+     LEFT JOIN donations d ON d.id = t.donation_id
      WHERE t.payment_status = 'completed'
      ORDER BY t.created_at DESC
      LIMIT ?`,
