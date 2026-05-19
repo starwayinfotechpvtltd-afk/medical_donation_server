@@ -8,18 +8,12 @@ import { ROLES } from '../config/constants.js';
 
 const router = Router();
 
-router.get('/stats', authenticate, authorize(ROLES.ADMIN), ctrl.getStats);
-router.get('/recent', authenticate, authorize(ROLES.ADMIN), ctrl.getRecentDonations);
+router.post('/donate', validate('donate'), ctrl.donate);
 router.post('/verify-payment', ctrl.verifyDonationPayment);
 router.post('/webhook', ctrl.handleDonationWebhook);
 
-router.post('/', authenticate, authorize(ROLES.ADMIN), validate('campaign'), ctrl.createCampaign);
-router.get('/', paginate, ctrl.listCampaigns);
-router.get('/:id', ctrl.getCampaign);
-router.patch('/:id', authenticate, authorize(ROLES.ADMIN), validate('campaign'), ctrl.updateCampaign);
-router.delete('/:id', authenticate, authorize(ROLES.ADMIN), ctrl.deleteCampaign);
-
-router.post('/donate', validate('donate'), ctrl.donate);
-router.get('/:id/transactions', authenticate, authorize(ROLES.ADMIN), paginate, ctrl.getCampaignTransactions);
+router.get('/stats', authenticate, authorize(ROLES.ADMIN), ctrl.getStats);
+router.get('/recent', authenticate, authorize(ROLES.ADMIN), ctrl.getRecentDonations);
+router.get('/transactions', authenticate, authorize(ROLES.ADMIN), paginate, ctrl.getTransactions);
 
 export default router;

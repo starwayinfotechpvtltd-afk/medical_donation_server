@@ -9,108 +9,6 @@ import {
   getRazorpayPublicConfig,
 } from '../utils/razorpay.js';
 
-export const createCampaign = async (req, res, next) => {
-  try {
-    const {
-      title, description,
-      goal_amount, currency, start_date,
-      end_date, thumbnail_url, is_featured,
-    } = req.body;
-
-    const { id } = await donModel.createCampaign({
-      title,
-      description,
-      created_by: null,
-      goal_amount: parseFloat(goal_amount),
-      currency,
-      start_date,
-      end_date,
-      thumbnail_url,
-      is_featured,
-    });
-
-    const campaign = await donModel.findCampaignById(id);
-
-    return sendSuccess(res, {
-      statusCode: 201,
-      message: 'Campaign created successfully.',
-      data: campaign,
-    });
-  } catch (err) { next(err); }
-};
-
-export const listCampaigns = async (req, res, next) => {
-  try {
-    const { status, is_featured } = req.query;
-    const { limit, offset, page } = req.pagination;
-
-    const { rows, total } = await donModel.findAllCampaigns({
-      status,
-      is_featured: is_featured !== undefined ? Boolean(parseInt(is_featured, 10)) : undefined,
-      limit, offset,
-    });
-
-    return sendSuccess(res, {
-      message: 'Campaigns fetched successfully.',
-      data: rows,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    });
-  } catch (err) { next(err); }
-};
-
-export const getCampaign = async (req, res, next) => {
-  try {
-    const campaignId = parseInt(req.params.id, 10);
-    if (!Number.isFinite(campaignId)) return next(new AppError('Invalid campaign id.', 400));
-    const campaign = await donModel.findCampaignById(campaignId);
-    if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
-
-    const stats = await donModel.getCampaignStats(campaign.id);
-    const progressPct = campaign.goal_amount > 0
-      ? Math.min(100, ((campaign.raised_amount / campaign.goal_amount) * 100).toFixed(2))
-      : 0;
-
-    return sendSuccess(res, {
-      message: 'Campaign fetched successfully.',
-      data: { ...campaign, stats, progress_percent: parseFloat(progressPct) },
-    });
-  } catch (err) { next(err); }
-};
-
-export const updateCampaign = async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return next(new AppError('Invalid campaign id.', 400));
-    const campaign = await donModel.findCampaignById(id);
-    if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
-
-    if (['completed', 'cancelled'].includes(campaign.status)) {
-      return next(new AppError(`Cannot edit a ${campaign.status} campaign.`, 400, 'CAMPAIGN_LOCKED'));
-    }
-
-    await donModel.updateCampaign(id, req.body);
-    const updated = await donModel.findCampaignById(id);
-
-    return sendSuccess(res, { message: 'Campaign updated successfully.', data: updated });
-  } catch (err) { next(err); }
-};
-
-export const deleteCampaign = async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return next(new AppError('Invalid campaign id.', 400));
-    const campaign = await donModel.findCampaignById(id);
-    if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
-
-    if (campaign.status !== 'draft') {
-      return next(new AppError('Only draft campaigns can be deleted.', 400, 'CAMPAIGN_NOT_DRAFT'));
-    }
-
-    await donModel.deleteCampaign(id);
-    return sendSuccess(res, { message: 'Campaign deleted successfully.' });
-  } catch (err) { next(err); }
-};
-
 export const donate = async (req, res, next) => {
   try {
     const {
@@ -136,18 +34,7 @@ export const donate = async (req, res, next) => {
       },
     });
 
-    let donationId = null;
-    const requestedDonationId = parseInt(req.body?.donation_id, 10);
-    if (Number.isFinite(requestedDonationId) && requestedDonationId > 0) {
-      const campaign = await donModel.findCampaignById(requestedDonationId);
-      if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
-      donationId = campaign.id;
-    } else {
-      donationId = await donModel.getOrCreateGeneralCampaignId();
-    }
-
     const { id } = await donModel.createTransaction({
-      donation_id: donationId,
       amount: parsedAmount,
       currency,
       payment_method,
@@ -161,6 +48,7 @@ export const donate = async (req, res, next) => {
       is_anonymous: is_anonymous ? 1 : 0,
       donor_message,
     });
+
     const { keyId } = getRazorpayPublicConfig();
 
     return sendSuccess(res, {
@@ -243,25 +131,6 @@ export const handleDonationWebhook = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-export const getCampaignTransactions = async (req, res, next) => {
-  try {
-    const campaignId = parseInt(req.params.id, 10);
-    if (!Number.isFinite(campaignId)) return next(new AppError('Invalid campaign id.', 400));
-    const { limit, offset, page } = req.pagination;
-
-    const campaign = await donModel.findCampaignById(campaignId);
-    if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
-
-    const { rows, total } = await donModel.findTransactionsByCampaign(campaignId, { limit, offset });
-
-    return sendSuccess(res, {
-      message: 'Campaign transactions fetched successfully.',
-      data: rows,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    });
-  } catch (err) { next(err); }
-};
-
 export const getStats = async (_req, res, next) => {
   try {
     const stats = await donModel.getOverallStats();
@@ -274,5 +143,27 @@ export const getRecentDonations = async (req, res, next) => {
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit || '20', 10)));
     const rows = await donModel.getRecentCompletedDonations(limit);
     return sendSuccess(res, { message: 'Recent donations fetched.', data: rows });
+  } catch (err) { next(err); }
+};
+
+export const getTransactions = async (req, res, next) => {
+  try {
+    const { limit, offset, page } = req.pagination;
+    const { donor_email, payment_status, from_date, to_date } = req.query;
+
+    const { rows, total } = await donModel.findTransactions({
+      limit,
+      offset,
+      donor_email: donor_email ? String(donor_email).trim() : undefined,
+      payment_status: payment_status ? String(payment_status).trim() : undefined,
+      from_date: from_date ? String(from_date).trim() : undefined,
+      to_date: to_date ? String(to_date).trim() : undefined,
+    });
+
+    return sendSuccess(res, {
+      message: 'Transactions fetched successfully.',
+      data: rows,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
   } catch (err) { next(err); }
 };
