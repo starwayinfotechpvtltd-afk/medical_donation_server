@@ -60,6 +60,12 @@ app.use('/api/admin', adminRoute);
 app.use('/api/hero-banners', heroBannerRoute);
 
 app.use(notFound);
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'API Server Running'
+  });
+});
 app.use(errorHandler);
 
 export default app;
