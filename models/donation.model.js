@@ -22,6 +22,29 @@ export const findCampaignById = async (id) => {
   return rows[0] || null;
 };
 
+export const getOrCreateGeneralCampaignId = async () => {
+  const [rows] = await pool.query(
+    `SELECT id
+     FROM donations
+     WHERE LOWER(title) = 'general donation'
+     ORDER BY id ASC
+     LIMIT 1`
+  );
+  if (rows[0]?.id) return rows[0].id;
+
+  const [result] = await pool.query(
+    `INSERT INTO donations
+       (title, description, patient_id, created_by, goal_amount,
+        currency, status, start_date, end_date, thumbnail_url,
+        is_featured, raised_amount, created_at, updated_at)
+     VALUES ('General Donation', NULL, NULL, NULL, 0.00,
+             'INR', 'active', NULL, NULL, NULL,
+             0, 0.00, NOW(), NOW())`
+  );
+
+  return result.insertId;
+};
+
 export const findAllCampaigns = async ({ status, is_featured, limit, offset }) => {
   const conditions = [];
   const params = [];

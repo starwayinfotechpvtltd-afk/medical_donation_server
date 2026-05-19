@@ -136,8 +136,18 @@ export const donate = async (req, res, next) => {
       },
     });
 
+    let donationId = null;
+    const requestedDonationId = parseInt(req.body?.donation_id, 10);
+    if (Number.isFinite(requestedDonationId) && requestedDonationId > 0) {
+      const campaign = await donModel.findCampaignById(requestedDonationId);
+      if (!campaign) return next(new AppError('Campaign not found.', 404, 'CAMPAIGN_NOT_FOUND'));
+      donationId = campaign.id;
+    } else {
+      donationId = await donModel.getOrCreateGeneralCampaignId();
+    }
+
     const { id } = await donModel.createTransaction({
-      donation_id: null,
+      donation_id: donationId,
       amount: parsedAmount,
       currency,
       payment_method,
