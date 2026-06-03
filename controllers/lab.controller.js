@@ -35,6 +35,17 @@ export const createLabTest = async (req, res, next) => {
 
 export const assignLabTech = async (req, res, next) => {
   try {
+    if (req.user.role === 'doctor') {
+      const [rows] = await pool.query(
+        `SELECT lt.id
+         FROM lab_tests lt
+         JOIN doctor_profiles dp ON dp.id = lt.doctor_profile_id
+         WHERE lt.id = ? AND dp.user_id = ?
+         LIMIT 1`,
+        [parseInt(req.params.id, 10), req.user.sub]
+      );
+      if (!rows[0]) return next(new AppError('You can only assign technicians for your own tests.', 403));
+    }
     await model.assignLabTech(parseInt(req.params.id, 10), req.body.lab_tech_profile_id);
     return sendSuccess(res, { message: 'Lab technician assigned successfully.' });
   } catch (err) { next(err); }
@@ -62,5 +73,96 @@ export const getPatientLabTests = async (req, res, next) => {
     if (req.patient && req.patient.id !== patientId) return next(new AppError('Forbidden', 403));
     const data = await model.getLabTestsByPatient(patientId);
     return sendSuccess(res, { message: 'Lab tests fetched successfully.', data });
+  } catch (err) { next(err); }
+};
+
+export const listLabTests = async (req, res, next) => {
+  try {
+    const data = await model.listLabTests({
+      role: req.user.role,
+      userId: req.user.sub,
+      status: req.query.status,
+      patientRegNo: req.query.patient_reg_no,
+      assignedProfileId: req.query.lab_tech_profile_id ? parseInt(req.query.lab_tech_profile_id, 10) : undefined,
+    });
+    return sendSuccess(res, { message: 'Lab tests fetched successfully.', data });
+  } catch (err) { next(err); }
+};
+
+export const toggleCritical = async (req, res, next) => {
+  try {
+    await model.updateLabTestActive(parseInt(req.params.id, 10), !!req.body.is_critical);
+    return sendSuccess(res, { message: 'Lab test critical flag updated successfully.' });
+  } catch (err) { next(err); }
+};
+
+export const listLabTechnicians = async (_req, res, next) => {
+  try {
+    const data = await model.listLabTechnicianProfiles();
+    return sendSuccess(res, { message: 'Lab technicians fetched successfully.', data });
+  } catch (err) { next(err); }
+};
+
+export const listLabTechnicianProfiles = async (_req, res, next) => {
+  try {
+    const data = await model.listLabTechnicianProfilesDetailed();
+    return sendSuccess(res, { message: 'Lab technician profiles fetched successfully.', data });
+  } catch (err) { next(err); }
+};
+
+export const createLabTechnicianProfile = async (req, res, next) => {
+  try {
+    const files = req.files || {};
+    const certificateImage = files.certificate_image?.[0]?.filename ? `/uploads/lab/${files.certificate_image[0].filename}` : null;
+    const panImage = files.pan_image?.[0]?.filename ? `/uploads/lab/${files.pan_image[0].filename}` : null;
+    const labProfileImage = files.lab_profile_image?.[0]?.filename ? `/uploads/lab/${files.lab_profile_image[0].filename}` : null;
+    const id = await model.createLabTechnicianProfile({
+      ...req.body,
+      certificate_image: certificateImage,
+      pan_image: panImage,
+      lab_profile_image: labProfileImage,
+    });
+    return sendSuccess(res, { statusCode: 201, message: 'Lab technician profile created successfully.', data: { id } });
+  } catch (err) { next(err); }
+};
+
+export const updateLabTechnicianProfile = async (req, res, next) => {
+  try {
+    const files = req.files || {};
+    const certificateImage = files.certificate_image?.[0]?.filename ? `/uploads/lab/${files.certificate_image[0].filename}` : undefined;
+    const panImage = files.pan_image?.[0]?.filename ? `/uploads/lab/${files.pan_image[0].filename}` : undefined;
+    const labProfileImage = files.lab_profile_image?.[0]?.filename ? `/uploads/lab/${files.lab_profile_image[0].filename}` : undefined;
+    await model.updateLabTechnicianProfile(parseInt(req.params.id, 10), {
+      ...req.body,
+      certificate_image: certificateImage ?? req.body.certificate_image,
+      pan_image: panImage ?? req.body.pan_image,
+      lab_profile_image: labProfileImage ?? req.body.lab_profile_image,
+    });
+    return sendSuccess(res, { message: 'Lab technician profile updated successfully.' });
+  } catch (err) { next(err); }
+};
+
+export const getMyDepartments = async (req, res, next) => {
+  try {
+    const data = await model.listTechnicianDepartments(req.user.sub);
+    return sendSuccess(res, { message: 'Technician departments fetched successfully.', data });
+  } catch (err) { next(err); }
+};
+
+export const createMyDepartment = async (req, res, next) => {
+  try {
+    const key = String(req.body.department_key || '').trim().toLowerCase();
+    const name = String(req.body.department_name || '').trim();
+    if (!key || !name) return next(new AppError('department_key and department_name are required.', 400));
+    const id = await model.createTechnicianDepartment(req.user.sub, key, name);
+    return sendSuccess(res, { statusCode: 201, message: 'Department added successfully.', data: { id } });
+  } catch (err) { next(err); }
+};
+
+export const deleteMyDepartment = async (req, res, next) => {
+  try {
+    const ok = await model.deleteTechnicianDepartment(parseInt(req.params.id, 10), req.user.sub);
+    if (!ok) return next(new AppError('Department not found.', 404));
+    return sendSuccess(res, { message: 'Department removed successfully.' });
   } catch (err) { next(err); }
 };

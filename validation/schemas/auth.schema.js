@@ -54,3 +54,11 @@ export const labTechSetPasswordSchema = Joi.object({
   password: password.required(),
 });
 
+export const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().required(),
+  newPassword: password.required(),
+  confirmPassword: Joi.string().valid(Joi.ref('newPassword')).required().messages({
+    'any.only': 'Confirm password must match new password.',
+  }),
+});
+

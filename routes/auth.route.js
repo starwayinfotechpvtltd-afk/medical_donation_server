@@ -12,6 +12,7 @@ import {
   labTechRequestOtpSchema,
   labTechVerifyOtpSchema,
   labTechSetPasswordSchema,
+  changePasswordSchema,
 } from '../validation/schemas/auth.schema.js';
 
 const router = Router();
@@ -24,6 +25,7 @@ router.post('/doctor/set-password', authLimiter, validate(doctorSetPasswordSchem
 router.post('/labtech/request-otp', authLimiter, validate(labTechRequestOtpSchema), authController.requestLabTechOtp);
 router.post('/labtech/verify-otp', authLimiter, validate(labTechVerifyOtpSchema), authController.verifyLabTechOtpCode);
 router.post('/labtech/set-password', authLimiter, validate(labTechSetPasswordSchema), authController.setLabTechPassword);
+router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.get('/me',        authenticate,                          authController.getMe);
 
 export default router;

@@ -2,8 +2,13 @@ import { pool } from '../config/db.js';
 
 export const getDepartments = async () => {
   const [rows] = await pool.query(
-    `SELECT d.*, ds.id AS service_id, ds.service_name
+    `SELECT d.*, COALESCE(dc.doctors, 0) AS doctors, ds.id AS service_id, ds.service_name
      FROM departments d
+     LEFT JOIN (
+       SELECT department_id, COUNT(DISTINCT doctor_profile_id) AS doctors
+       FROM doctor_departments
+       GROUP BY department_id
+     ) dc ON dc.department_id = d.id
      LEFT JOIN department_services ds ON ds.department_id = d.id
      WHERE d.is_active = 1
      ORDER BY d.name ASC`
@@ -25,22 +30,64 @@ export const getDepartmentDetail = async (id) => {
 };
 
 export const createDepartment = async (data) => {
-  const [result] = await pool.query(
-    `INSERT INTO departments (name, description, icon, image_url, beds, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-    [data.name, data.description || null, data.icon || null, data.image_url || null, data.beds || null]
-  );
-  return result.insertId;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [result] = await conn.query(
+      `INSERT INTO departments (name, description, icon, image_url, beds, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+      [data.name, data.description || null, data.icon || null, data.image_url || null, data.beds || null]
+    );
+    const departmentId = result.insertId;
+
+    if (Array.isArray(data.services) && data.services.length) {
+      const values = data.services.map((service) => [departmentId, service]);
+      await conn.query(
+        'INSERT INTO department_services (department_id, service_name) VALUES ?',
+        [values]
+      );
+    }
+
+    await conn.commit();
+    return departmentId;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 };
 
 export const updateDepartment = async (id, data) => {
-  await pool.query(
-    `UPDATE departments
-     SET name = COALESCE(?, name), description = COALESCE(?, description), icon = COALESCE(?, icon),
-         image_url = COALESCE(?, image_url), beds = COALESCE(?, beds), updated_at = NOW()
-     WHERE id = ?`,
-    [data.name ?? null, data.description ?? null, data.icon ?? null, data.image_url ?? null, data.beds ?? null, id]
-  );
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      `UPDATE departments
+       SET name = COALESCE(?, name), description = COALESCE(?, description), icon = COALESCE(?, icon),
+           image_url = COALESCE(?, image_url), beds = COALESCE(?, beds), updated_at = NOW()
+       WHERE id = ?`,
+      [data.name ?? null, data.description ?? null, data.icon ?? null, data.image_url ?? null, data.beds ?? null, id]
+    );
+
+    if (Array.isArray(data.services)) {
+      await conn.query('DELETE FROM department_services WHERE department_id = ?', [id]);
+      if (data.services.length) {
+        const values = data.services.map((service) => [id, service]);
+        await conn.query(
+          'INSERT INTO department_services (department_id, service_name) VALUES ?',
+          [values]
+        );
+      }
+    }
+
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 };
 
 export const softDeleteDepartment = async (id) => {

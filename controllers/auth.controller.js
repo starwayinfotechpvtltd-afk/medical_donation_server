@@ -265,3 +265,31 @@ export const setLabTechPassword = async (req, res, next) => {
     next(err);
   }
 };
+
+export const changePassword = async (req, res, next) => {
+  try {
+    const user = await userModel.findByEmail(req.user.email);
+    if (!user) {
+      return next(new AppError('User not found.', 404, 'USER_NOT_FOUND'));
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    const passwordMatch = await comparePassword(currentPassword, user.password);
+    if (!passwordMatch) {
+      return next(new AppError('Current password is incorrect.', 400, 'INVALID_CURRENT_PASSWORD'));
+    }
+
+    const isSamePassword = await comparePassword(newPassword, user.password);
+    if (isSamePassword) {
+      return next(new AppError('New password must be different from current password.', 400, 'PASSWORD_UNCHANGED'));
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await userModel.updatePassword(user.id, passwordHash);
+
+    return sendSuccess(res, { message: 'Password updated successfully.' });
+  } catch (err) {
+    next(err);
+  }
+};

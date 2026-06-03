@@ -2,6 +2,29 @@ import * as model from '../models/department.model.js';
 import { sendSuccess } from '../utils/response.js';
 import AppError from '../utils/AppError.js';
 
+const parseServices = (raw) => {
+  if (!raw) return undefined;
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    const value = raw.trim();
+    if (!value) return [];
+    if (value.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => String(item).trim()).filter(Boolean);
+        }
+      } catch {
+        // Fallback to comma-separated parsing below
+      }
+    }
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return undefined;
+};
+
 const groupDepartmentRows = (rows) => {
   const map = new Map();
   for (const row of rows) {
@@ -34,6 +57,8 @@ export const createDepartment = async (req, res, next) => {
   try {
     if (!req.body.name) return next(new AppError('name is required.', 400));
     const payload = { ...req.body };
+    const services = parseServices(req.body.services);
+    if (services !== undefined) payload.services = [...new Set(services)];
     if (req.file?.filename) payload.image_url = `/uploads/departments/${req.file.filename}`;
     const id = await model.createDepartment(payload);
     return sendSuccess(res, { statusCode: 201, message: 'Department created successfully.', data: { id } });
@@ -43,6 +68,8 @@ export const createDepartment = async (req, res, next) => {
 export const updateDepartment = async (req, res, next) => {
   try {
     const payload = { ...req.body };
+    const services = parseServices(req.body.services);
+    if (services !== undefined) payload.services = [...new Set(services)];
     if (req.file?.filename) payload.image_url = `/uploads/departments/${req.file.filename}`;
     await model.updateDepartment(parseInt(req.params.id, 10), payload);
     return sendSuccess(res, { message: 'Department updated successfully.' });
