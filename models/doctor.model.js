@@ -1,7 +1,7 @@
 import { pool } from '../config/db.js';
 
 export const getDoctors = async () => {
-  const [rows] = await pool.query(`SELECT dp.*, u.first_name, u.last_name,
+  const [rows] = await pool.query(`SELECT dp.*, u.first_name, u.last_name, u.phone,
       GROUP_CONCAT(d.name ORDER BY d.name SEPARATOR ', ') AS departments
     FROM doctor_profiles dp
     JOIN users u ON u.id = dp.user_id
